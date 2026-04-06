@@ -1,0 +1,35 @@
+{
+  "model": "gpt-4.1",
+  "seed": 42,
+  "n_per_dataset": 80,
+  "budget_conditions": [
+    [
+      "no_cot",
+      150
+    ],
+    [
+      "short",
+      300
+    ],
+    [
+      "medium",
+      800
+    ],
+    [
+      "long",
+      1500
+    ],
+    [
+      "unconstrained",
+      3000
+    ]
+  ],
+  "datasets": [
+    "MATH",
+    "GSM8K",
+    "MMLU-Pro",
+    "MuSR"
+  ],
+  "total_samples": 318,
+  "elapsed_seconds": 394.76005148887634
+}

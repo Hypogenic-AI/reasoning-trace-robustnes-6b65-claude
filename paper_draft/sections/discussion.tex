@@ -1,0 +1,51 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{The Length--Accuracy Relationship Is Task-Dependent}
+\label{sec:discussion:task}
+
+Our central finding is that no single description captures the length--accuracy relationship across tasks. We observe three distinct regimes:
+
+\para{Within-capability tasks (MATH, MMLU-Pro).} Accuracy increases monotonically with trace length, with diminishing returns. This aligns with the standard assumption that more reasoning helps on tasks the model can solve in principle. The Spearman correlations between budget level and accuracy are positive and significant ($\rho{=}0.21$, $p{<}0.001$ for \math; $\rho{=}0.12$, $p{=}0.02$ for \mmlupro).
+
+\para{Easy tasks (GSM8K).} Accuracy is invariant to trace length, with all conditions achieving $90{-}94\%$. Extended reasoning is wasted computation on tasks well within the model's capability.
+
+\para{Frontier tasks (MuSR).} The relationship is non-monotonic. Short reasoning is worse than no reasoning (the ``underthinking trap''), accuracy peaks at moderate length, and additional tokens provide marginal or negative returns. This pattern matches the error accumulation theory of \citet{wu2025more}: on problems at the model's capability frontier, additional reasoning steps introduce more noise than signal.
+
+This task-dependent view reconciles apparent contradictions in prior work. \citet{wu2025more} observe the inverted U on in-distribution math tasks, which we confirm on our hardest OOD benchmark. \citet{su2025underthinking} find that incorrect responses tend to be longer, consistent with overthinking on easy problems and error accumulation on hard ones. The key insight is that the position on this spectrum depends on the interaction between task difficulty and model capability, not on absolute trace length alone.
+
+\subsection{The Underthinking Trap}
+\label{sec:discussion:trap}
+
+The finding that \shortbudget (5.1\%) underperforms \nocot (10.3\%) on \musr is, to our knowledge, novel. We hypothesize two mechanisms. First, brief reasoning may \emph{commit} the model to a reasoning direction without sufficient tokens to explore alternatives or self-correct---a form of premature closure. Second, the \nocot condition may leverage the model's zero-shot pattern-matching capabilities, which can sometimes outperform shallow deliberation. This finding has practical implications: if forced to use short CoT (due to latency or cost constraints), practitioners may be better served by no CoT at all on sufficiently hard tasks.
+
+This connects to \citet{valmeekam2025reasonless}, who show that trace content may be decoupled from reasoning quality. On frontier tasks, a few reasoning tokens may do more harm than good by steering the model toward a specific (and likely incorrect) inference path, whereas the no-CoT response draws on the model's full implicit knowledge without this anchoring effect.
+
+\subsection{Confidence Miscalibration as a Fundamental Barrier}
+\label{sec:discussion:confidence}
+
+The stark contrast in confidence calibration between \math ($\rho{=}0.633$) and \musr ($\rho{\approx}0$) represents a fundamental barrier to confidence-based adaptive reasoning systems. On \musr, GPT-4.1 reports $>75\%$ confidence on nearly all questions despite achieving only 5--22\% accuracy. This is not merely weak calibration---it is \emph{systematic overconfidence} on the hardest OOD tasks.
+
+This miscalibration pattern is consistent with \citet{dellibarda2025illusion}, who show that token usage reflects self-assessed tractability rather than actual capability. The model ``does not know what it does not know'' on genuinely novel tasks. This poses a challenge for all adaptive systems that rely on internal uncertainty signals: they will fail precisely on the tasks where adaptation is most valuable.
+
+\para{Implications for adaptive systems.} Our adaptive strategy achieves genuine token savings in-distribution (32\% reduction on \math) but fails catastrophically OOD. Future adaptive systems need external calibration signals---such as probe-based uncertainty estimation~\citep{bogdan2025anchors}, semantic diversity of sampled reasoning paths, or learned difficulty classifiers---rather than relying on model self-reported confidence.
+
+\subsection{Self-Regulation of Output Length}
+\label{sec:discussion:selfregulation}
+
+An unexpected finding is that actual token usage converges between the \longbudget (max 1500) and \unconst (max 3000) conditions (${\sim}400{-}600$ tokens across benchmarks). The model appears to reach a natural ``saturation point'' of reasoning depth regardless of the allocated budget ceiling. This suggests that prompt-based budget forcing primarily constrains \emph{short} reasoning (preventing the model from reaching its natural depth) rather than encouraging \emph{longer} reasoning beyond what the model would naturally produce. This has implications for budget-forcing studies: the effective range of prompt-based control is narrower than the nominal token limits suggest.
+
+\subsection{Limitations}
+\label{sec:discussion:limitations}
+
+\para{Single model.} We evaluate only GPT-4.1. The specific accuracy levels and optimal trace lengths likely differ across model families (e.g., DeepSeek-R1, Claude, open-source reasoning models). However, we expect the qualitative finding---that the length--accuracy relationship is task-dependent---to generalize.
+
+\para{Prompt-based budget forcing.} System-prompt instructions provide imprecise control over actual reasoning length. RL-trained approaches such as L1~\citep{aggarwal2025l1} achieve tighter length targeting but require model training. Our approach has the advantage of model-agnostic applicability.
+
+\para{Sample size.} With 80 questions per dataset, some pairwise comparisons lack statistical power. We report bootstrap CIs throughout to characterize uncertainty, and note that the \musr results ($n{=}78$) have the widest intervals due to both small sample size and low absolute accuracy.
+
+\para{Single run.} Using $T{=}0.0$ ensures determinism within a run but prevents measuring inter-run variability. Stochastic decoding with multiple samples would provide richer distributional information.
+
+\para{Length vs.\ structure.} We measure only trace length, not structural features such as branching, backtracking, or verification steps. Prior work~\citep{jiang2025goodchain} suggests these features are more predictive of correctness than length alone. Our study establishes the baseline relationship that structural analyses can build upon.
+
+\para{No MuSR difficulty decomposition.} \musr contains three subtasks (murder mysteries, object placements, team allocation) that likely differ in difficulty and length sensitivity. Our balanced sampling across subtasks treats them as a single distribution.

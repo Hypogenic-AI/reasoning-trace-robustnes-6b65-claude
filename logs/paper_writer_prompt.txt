@@ -1,0 +1,836 @@
+You are an academic paper writer. Generate a complete NEURIPS style paper
+based on the experiment results provided.
+
+════════════════════════════════════════════════════════════════════════════════
+                         IMPORTANT: BEFORE YOU START
+════════════════════════════════════════════════════════════════════════════════
+
+Before writing any content, you MUST complete these steps:
+
+1. READ THE SKILL: Review the paper-writer skill at .claude/skills/paper-writer/SKILL.md
+2. READ THE STYLE GUIDE: Study templates/paper_writing/lab_style_guide.md carefully
+3. REVIEW EXAMPLES: Browse paper_examples/ for formatting and language patterns:
+   - Look at sections/1.introduction.tex for language style
+   - Look at tables/*.tex for table formatting
+   - Look at commands/*.tex for macro usage
+4. VERIFY COMMAND TEMPLATES: Command templates (math.tex, general.tex, macros.tex) are pre-copied to paper_draft/commands/
+
+CRITICAL: Reference example papers for FORMATTING and LANGUAGE STYLE only.
+Do NOT copy content, phrasing, or narrative structure from the example papers.
+The examples are in a different research domain - focus only on presentation style.
+
+════════════════════════════════════════════════════════════════════════════════
+                            EXPERIMENT REPORT
+════════════════════════════════════════════════════════════════════════════════
+
+# Reasoning Trace Length as a Proxy for Robustness: A Systematic Investigation
+
+## 1. Executive Summary
+
+We systematically investigated whether longer reasoning chains always improve generalization in LLMs by varying trace length budgets in GPT-4.1 across four benchmarks spanning in-distribution math, easy math, knowledge-intensive QA, and multi-step reasoning. **Our key finding is that the relationship between trace length and accuracy is task-dependent: monotonically increasing for hard tasks (MATH, MMLU-Pro), flat for easy tasks (GSM8K), and non-monotonic for challenging OOD tasks (MuSR).** The robustness gap (ID-OOD accuracy difference) does not follow a simple pattern—it narrows for some OOD datasets with longer traces but widens for others. Critically, we found that model confidence is well-calibrated in-distribution (ρ=0.63 on MATH) but completely uncalibrated on hard OOD tasks (ρ≈0 on MuSR), undermining confidence-based adaptive length selection. An adaptive two-pass strategy achieves comparable accuracy to fixed-budget &#34;long&#34; reasoning on MATH with 32% fewer tokens, but fails on MuSR where the model is overconfident despite being wrong.
+
+## 2. Goal
+
+**Hypothesis:** There exists a non-monotonic relationship between reasoning trace length and OOD robustness in LLMs—both overly short and overly verbose traces harm performance, and adaptive trace length controls informed by uncertainty will outperform fixed-length approaches.
+
+**Why this matters:** Chain-of-thought reasoning is the default approach for improving LLM performance, but practitioners lack guidance on how reasoning length interacts with OOD robustness. If longer reasoning doesn&#39;t help (or hurts) on unfamiliar tasks, current deployment practices may be suboptimal. Understanding this relationship can inform more efficient and robust LLM deployment.
+
+**Gap filled:** While Wu et al. (2025) established the inverted U-curve for accuracy vs trace length on in-distribution tasks, and Yang et al. (2025) showed training-free length reduction degrades behavioral consistency, no prior work has systematically measured how the length-accuracy relationship changes across ID vs OOD benchmarks, or whether uncertainty signals can guide adaptive length selection for OOD robustness.
+
+## 3. Data Construction
+
+### Dataset Description
+
+| Dataset | Source | Size (sampled) | Task Type | Role |
+|---------|--------|----------------|-----------|------|
+| MATH | EleutherAI/hendrycks_math | 80 | Competition math (5 difficulty levels) | In-distribution (primary) |
+| GSM8K | openai/gsm8k | 80 | Grade school arithmetic | Easy baseline (OOD-easy) |
+| MMLU-Pro | TIGER-Lab/MMLU-Pro | 80 | Multi-domain knowledge MC | OOD (knowledge-heavy) |
+| MuSR | TAUR-Lab/MuSR | 78 | Multistep soft reasoning (murder mystery, object placement, team allocation) | OOD (hard reasoning) |
+
+### Example Samples
+
+**MATH (Level 5):** &#34;Solve the inequality √(x² - x - 6) &lt; 2x - 3.&#34; → Answer: [3, ∞)
+
+**GSM8K:** &#34;The girls are trying to raise money for a carnival. Kim raises $320 more than Alexandra, who raises $430...&#34; → Answer: 2280
+
+**MMLU-Pro:** Multiple choice knowledge questions across science, law, engineering, etc.
+
+**MuSR:** Long narrative passages (500-1000 words) requiring multi-step deductive reasoning.
+
+### Data Quality
+- All datasets loaded from pre-downloaded HuggingFace arrow files
+- MATH: stratified sampling across 5 difficulty levels (16 per level)
+- GSM8K: random sample from 1319-question test set
+- MuSR: balanced across 3 subtasks (murder mysteries, object placements, team allocation)
+- Answer extraction validated manually on 5 examples per dataset
+
+### Preprocessing
+- MATH: extracted \boxed{} answers from solutions
+- GSM8K: extracted numeric answer after #### delimiter
+- MMLU-Pro/MuSR: formatted as multiple choice with letter options A-J
+
+## 4. Experiment Description
+
+### Methodology
+
+#### High-Level Approach
+We used **budget-forcing via prompting** to control reasoning trace length at 5 levels, then measured accuracy on 4 benchmarks. This approach tests the fundamental relationship between allocated reasoning effort and performance without requiring model fine-tuning.
+
+#### Why This Method?
+- Budget forcing via system prompts is the most widely applicable method (works with any API model)
+- RL-based methods (L1, LCPO) require training and are model-specific
+- Our approach isolates the effect of reasoning length from training method artifacts
+- Using GPT-4.1 (state-of-the-art, April 2025) ensures findings are relevant to current practice
+
+### Implementation Details
+
+#### Tools and Libraries
+- Python 3.12.8
+- OpenAI API (gpt-4.1, temperature=0.0, seed=42)
+- numpy 2.3.0, scipy 1.17.1, pandas, matplotlib 3.10.8, seaborn
+
+#### Budget Conditions
+
+| Condition | Max Tokens | System Prompt Instruction |
+|-----------|-----------|---------------------------|
+| No CoT | 150 | &#34;Answer directly with NO reasoning or explanation&#34; |
+| Short | 300 | &#34;Think briefly in 1-2 sentences&#34; |
+| Medium | 800 | &#34;Think step by step in moderate detail (3-5 steps)&#34; |
+| Long | 1500 | &#34;Think very carefully and thoroughly step by step&#34; |
+| Unconstrained | 3000 | &#34;Think step by step, taking as much space as you need&#34; |
+
+#### Adaptive Strategy
+Two-pass approach: (1) Query with &#34;short&#34; budget; (2) If model confidence &lt; 75%, re-query with &#34;long&#34; budget. Final answer from whichever pass was used.
+
+### Experimental Protocol
+
+#### Reproducibility Information
+- Single run (temperature=0.0 for determinism)
+- Random seed: 42
+- Hardware: 2× NVIDIA RTX 3090 (not used for inference—API-based)
+- Total API calls: 1,590 (fixed) + 318 (adaptive) = 1,908
+- Execution time: ~8 minutes total
+
+#### Evaluation Metrics
+- **Accuracy:** Exact match (with normalization for LaTeX, numeric comparison for GSM8K, letter matching for MC)
+- **Robustness gap:** Accuracy_MATH - Accuracy_OOD for each budget condition
+- **Token efficiency:** Accuracy / mean_completion_tokens × 100
+- **Confidence calibration:** Spearman correlation between model-expressed confidence and correctness
+- **Bootstrap 95% CIs:** 1000 resamples for all accuracy estimates
+
+### Raw Results
+
+#### Accuracy by Dataset and Budget (with 95% Bootstrap CIs)
+
+| Dataset | No CoT | Short | Medium | Long | Unconstrained | Adaptive |
+|---------|--------|-------|--------|------|---------------|----------|
+| MATH | 46.2% [35-58] | 62.5% [51-73] | 70.0% [59-79] | 71.2% [61-81] | **77.5%** [69-86] | 71.2% |
+| GSM8K | 92.5% [86-98] | **93.8%** [88-99] | 90.0% [84-96] | 91.2% [85-96] | **93.8%** [88-99] | 91.2% |
+| MMLU-Pro | 62.5% [51-73] | 72.5% [63-83] | 75.0% [65-84] | 77.5% [68-86] | **78.8%** [69-88] | 71.2% |
+| MuSR | 10.3% [4-18] | 5.1% [1-10] | 14.1% [6-22] | **21.8%** [13-31] | 20.5% [13-30] | 7.7% |
+
+#### Mean Actual Token Usage
+
+| Dataset | No CoT | Short | Medium | Long | Unconstrained | Adaptive |
+|---------|--------|-------|--------|------|---------------|----------|
+| MATH | 116 | 163 | 383 | 537 | 610 | 366 |
+| GSM8K | 73 | 76 | 148 | 186 | 183 | 76 |
+| MMLU-Pro | 17 | 86 | 293 | 415 | 393 | 118 |
+| MuSR | 23 | 78 | 327 | 423 | 399 | 88 |
+
+#### Visualizations
+- Accuracy curves: `results/plots/accuracy_curves.png`
+- Accuracy vs actual tokens: `results/plots/accuracy_vs_tokens.png`
+- Robustness gap: `results/plots/robustness_gap.png`
+- Token efficiency: `results/plots/token_efficiency.png`
+- Confidence calibration: `results/plots/confidence_calibration.png`
+- Token length distributions: `results/plots/length_distribution.png`
+- MATH difficulty interaction: `results/plots/difficulty_interaction.png`
+
+## 5. Result Analysis
+
+### Key Findings
+
+**Finding 1: The length-accuracy relationship is task-dependent, not universally non-monotonic.**
+- MATH: Monotonically increasing (46% → 78%), consistent with hard tasks benefiting from more reasoning. The gain from no_cot→medium is significant (p=0.002), but medium→unconstrained is not (p=0.28).
+- GSM8K: Flat (~91-94% across all conditions). Easy tasks show no benefit from extended reasoning.
+- MMLU-Pro: Monotonically increasing (63% → 79%), similar to MATH.
+- MuSR: **Non-monotonic** — &#34;short&#34; (5%) is *worse* than &#34;no_cot&#34; (10%), then accuracy climbs to peak at &#34;long&#34; (22%), with a slight drop at unconstrained (21%). This is the only dataset showing the hypothesized inverted-U pattern.
+
+**Finding 2: The robustness gap does not follow a simple non-monotonic pattern.**
+- MATH-GSM8K gap: Narrows with longer traces (from -0.46 at no_cot to -0.16 at unconstrained). Note: GSM8K accuracy is *higher* than MATH, so gap is negative.
+- MATH-MMLU-Pro gap: Narrows similarly (-0.16 → -0.01).
+- MATH-MuSR gap: **Non-monotonic** — widens from 0.36 (no_cot) to 0.57 (short), narrows to 0.50 (long), then widens again to 0.57 (unconstrained). The gap is *minimized* at the &#34;long&#34; budget, supporting H2 partially.
+
+**Finding 3: Model confidence is calibrated in-distribution but catastrophically miscalibrated OOD.**
+- MATH: Confidence-accuracy Spearman ρ=0.633 (p&lt;0.0001). Strong signal.
+- GSM8K: ρ=0.304 (p&lt;0.0001). Moderate signal.
+- MMLU-Pro: ρ=0.301 (p&lt;0.0001). Moderate signal.
+- MuSR: ρ=-0.017 (p=0.74). **Zero correlation.** The model is confident (&gt;75%) on almost all MuSR questions despite ~10-22% accuracy.
+
+**Finding 4: Adaptive length selection works in-distribution but fails OOD due to miscalibration.**
+- On MATH: Adaptive achieves 71.2% accuracy (matching &#34;long&#34;) with only 366 avg tokens vs 537 for &#34;long&#34; (32% savings).
+- On MuSR: Adaptive achieves only 7.7% (worse than all fixed budgets ≥ medium) because only 1/78 questions get escalated — the model is overconfident despite being wrong.
+
+**Finding 5: Short reasoning can be worse than no reasoning on hard tasks.**
+- On MuSR, &#34;short&#34; (5.1%) is significantly worse than &#34;no_cot&#34; (10.3%). This suggests that forcing brief, superficial reasoning can be actively harmful — potentially by committing the model to a wrong reasoning path without enough tokens to self-correct.
+
+### Hypothesis Testing Results
+
+**H1 (Non-monotonic accuracy curve):**
+- **Partially supported.** The inverted U-shape appears only on the hardest OOD task (MuSR). For ID and moderate-OOD tasks, the relationship is monotonically increasing (though with diminishing returns).
+- Spearman budget→accuracy: MATH ρ=0.21 (p&lt;0.001), GSM8K ρ=0.00 (p=1.0), MMLU-Pro ρ=0.12 (p=0.02), MuSR ρ=0.15 (p=0.003).
+
+**H2 (Robustness gap minimized at moderate lengths):**
+- **Partially supported for hard OOD.** The MATH-MuSR gap is indeed minimized at the &#34;long&#34; (not extreme) budget. But the MATH-GSM8K and MATH-MMLU-Pro gaps are minimized at unconstrained (longest) budgets.
+
+**H3 (Confidence predicts optimal trace length):**
+- **Refuted for OOD tasks.** Confidence is a useful signal in-distribution but completely uninformative on the hardest OOD task, making confidence-based adaptive strategies unreliable for exactly the cases where they&#39;re most needed.
+
+### Surprises and Insights
+
+1. **&#34;Short&#34; can be worse than &#34;none&#34;:** On MuSR, forcing brief reasoning (5.1%) underperforms no reasoning at all (10.3%). This &#34;underthinking trap&#34; — committing to a reasoning direction without sufficient exploration — is a novel practical finding.
+
+2. **Overconfidence kills adaptive strategies:** GPT-4.1 reports &gt;75% confidence on MuSR questions where it achieves only ~5-22% accuracy. This systematic overconfidence on hard OOD tasks means any confidence-threshold-based escalation strategy will fail to escalate when it matters most.
+
+3. **Token budgets don&#39;t translate directly to actual usage:** The &#34;long&#34; (max 1500) and &#34;unconstrained&#34; (max 3000) conditions produce similar actual token counts (~400-600), suggesting the model self-regulates its output length regardless of budget allocation.
+
+### Error Analysis
+
+- **MATH:** Errors at short budgets are primarily computational (skipped steps leading to arithmetic errors). At long budgets, remaining errors are conceptual.
+- **GSM8K:** Near-ceiling performance means errors are sporadic, not systematically related to trace length.
+- **MuSR:** The model frequently selects wrong suspects/placements even with long reasoning. Errors appear to stem from misinterpreting narrative details, not insufficient reasoning steps.
+
+### Limitations
+
+1. **Single model:** We tested only GPT-4.1. Results may differ for other architectures (DeepSeek-R1, Claude, open-source reasoning models).
+2. **Prompt-based budget forcing:** This is an imprecise length control. RL-trained methods (L1/LCPO) would provide tighter control but require model training.
+3. **Sample size:** 80 questions per dataset limits statistical power. Some pairwise comparisons don&#39;t reach significance.
+4. **Single run:** Temperature=0.0 reduces variance but prevents measuring inter-run variability.
+5. **MuSR difficulty:** Very low accuracy on MuSR makes it hard to detect non-monotonic patterns robustly.
+6. **No structural analysis:** We measured only trace length, not structural features (branching, backtracking) which prior work suggests are more informative.
+
+## 6. Conclusions
+
+### Summary
+Longer reasoning chains do not always improve generalization. The length-accuracy relationship is **task-dependent**: monotonically increasing for tasks within the model&#39;s capability range (MATH, MMLU-Pro), flat for easy tasks (GSM8K), and non-monotonic for tasks near the model&#39;s capability frontier (MuSR). The critical barrier to adaptive trace length selection is **OOD confidence miscalibration** — models are most overconfident precisely when adaptive strategies would be most valuable.
+
+### Implications
+- **Practical:** For in-distribution or moderate-difficulty tasks, longer reasoning generally helps (with diminishing returns past ~500 tokens). For tasks at the frontier of model capability, moderate-length reasoning outperforms both extremes.
+- **Theoretical:** The non-monotonic pattern on MuSR aligns with Wu et al.&#39;s (2025) &#34;error accumulation&#34; theory: on very hard problems, additional reasoning steps add more noise than signal. The &#34;short worse than none&#34; finding suggests partial reasoning can commit models to wrong paths.
+- **For adaptive systems:** Confidence-based escalation is insufficient. Future adaptive systems need external calibration signals (e.g., probe-based uncertainty, semantic diversity of reasoning paths) rather than relying on model self-reported confidence.
+
+### Confidence in Findings
+- **High confidence:** Length-accuracy relationship is task-dependent; GSM8K is length-insensitive; confidence is miscalibrated OOD.
+- **Moderate confidence:** Non-monotonic pattern on MuSR (sample size is limiting; wider CIs).
+- **Low confidence:** Specific optimal trace lengths (these likely vary by model and are imprecisely controlled by prompting).
+
+## 7. Next Steps
+
+### Immediate Follow-ups
+1. **Multi-model comparison:** Repeat with Claude Sonnet 4.5, DeepSeek-R1, and Gemini 2.5 Pro to test generality.
+2. **RL-trained length control:** Use L1/LCPO (code available) for precise length targeting and compare the length-robustness curve.
+3. **Better uncertainty signals:** Test probe-based uncertainty, semantic entropy of sampled reasoning paths, and agreement across multiple samples as alternatives to self-reported confidence.
+
+### Alternative Approaches
+- **Structural analysis:** Use the LCoT2Tree pipeline to measure reasoning structure (branching, backtracking) alongside length.
+- **Difficulty-adaptive budgets:** Use a difficulty classifier to assign per-question budgets rather than uniform budgets.
+- **Fine-grained OOD spectrum:** Test on tasks at varying degrees of distribution shift rather than binary ID/OOD.
+
+### Open Questions
+1. Does the &#34;short worse than none&#34; finding generalize across models and tasks?
+2. Can external calibration methods rescue confidence-based adaptive strategies?
+3. What is the mechanistic explanation for why partial reasoning hurts on hard tasks?
+4. How do these findings change with reasoning-specialized models (o1, R1) vs general models (GPT-4.1)?
+
+## References
+
+### Papers
+1. Wu et al. (2025). &#34;When More is Less: Understanding Chain-of-Thought Length in LLMs.&#34; arXiv:2502.07266.
+2. Su et al. (2025). &#34;Between Underthinking and Overthinking.&#34; arXiv:2505.00127.
+3. Yang et al. (2025). &#34;Is Long-to-Short a Free Lunch?&#34; arXiv:2506.19492.
+4. Aggarwal &amp; Welleck (2025). &#34;L1: Controlling How Long A Reasoning Model Thinks.&#34; arXiv:2503.04697.
+5. Chen et al. (2025). &#34;SEAL: Steerable Reasoning Calibration.&#34; arXiv:2504.07986.
+6. Jiang et al. (2025). &#34;What Makes a Good Reasoning Chain?&#34; arXiv:2505.22148.
+7. Valmeekam et al. (2025). &#34;Beyond Semantics: The Unreasonable Effectiveness of Reasonless Tokens.&#34; arXiv:2505.13775.
+8. Dellibarda Varela et al. (2025). &#34;The Illusion of Thinking (Rethinking).&#34; arXiv:2507.01231.
+
+### Datasets
+- MATH: Hendrycks et al. (2021), via EleutherAI/hendrycks_math
+- GSM8K: Cobbe et al. (2021), via openai/gsm8k
+- MMLU-Pro: TIGER-Lab
+- MuSR: Sprague et al. (2023), TAUR-Lab/MuSR
+
+### Tools
+- OpenAI GPT-4.1 API
+- Python 3.12, NumPy, SciPy, Matplotlib, Seaborn, Pandas
+
+
+════════════════════════════════════════════════════════════════════════════════
+                            RESEARCH PLAN
+════════════════════════════════════════════════════════════════════════════════
+
+# Research Plan: Reasoning Trace Length as a Proxy for Robustness
+
+## Motivation &amp; Novelty Assessment
+
+### Why This Research Matters
+Chain-of-thought reasoning has become the default paradigm for improving LLM performance, yet we lack understanding of how trace length interacts with out-of-distribution robustness. Practitioners need guidance on whether longer reasoning helps or hurts when models encounter unfamiliar tasks. This directly impacts deployment decisions for reasoning-capable LLMs.
+
+### Gap in Existing Work
+Based on the literature review: Wu et al. (2025) established the inverted U-curve for accuracy vs trace length; Yang et al. (2025) showed training-free length reduction degrades behavioral consistency; L1 demonstrated RL-trained length control generalizes OOD. **However, no paper systematically measures OOD robustness as a function of controlled trace length across multiple domains.** The gap: we know length affects accuracy (ID), but not how the length-accuracy relationship shifts when moving OOD.
+
+### Our Novel Contribution
+We systematically vary reasoning trace length in state-of-the-art LLMs using budget-forcing prompts and measure: (1) the accuracy vs trace length curve on in-distribution vs OOD benchmarks, (2) the &#34;robustness gap&#34; (ID-OOD accuracy drop) as a function of trace length, (3) whether uncertainty signals (model-expressed confidence) correlate with optimal trace length, and (4) whether adaptive length selection outperforms fixed budgets for OOD generalization.
+
+### Experiment Justification
+- **Experiment 1 (Length-Accuracy Curves):** Establishes baseline inverted U-curves on ID and OOD tasks. Needed to confirm the phenomenon holds across domains, not just math.
+- **Experiment 2 (Robustness Gap Analysis):** Tests our core hypothesis—that robustness gap varies non-monotonically with trace length. Novel measurement.
+- **Experiment 3 (Uncertainty-Length Correlation):** Tests whether model uncertainty signals can predict when longer traces help vs hurt. Explores adaptive potential.
+
+## Research Question
+Does a non-monotonic relationship exist between reasoning trace length and OOD robustness? Can moderate trace lengths maximize generalization, and can uncertainty signals guide adaptive length selection?
+
+## Hypothesis Decomposition
+H1: Accuracy vs trace length follows an inverted U-curve on both ID and OOD tasks, but the peak shifts.
+H2: The robustness gap (ID-OOD accuracy drop) is minimized at moderate trace lengths, not at the longest or shortest.
+H3: Model-expressed confidence correlates with whether a given trace length is near-optimal for a particular problem.
+
+## Proposed Methodology
+
+### Approach
+Use real LLM APIs (GPT-4.1 via OpenAI) with budget-forcing prompts to control reasoning trace length at 5 levels. Evaluate on 4 benchmarks spanning different domains and difficulties. Measure accuracy, trace length, confidence, and compute robustness gap.
+
+### Experimental Steps
+1. Sample balanced subsets from each dataset (~100 questions per dataset)
+2. Design 5 budget-forcing prompt conditions: NoCoT, Short (~100 tok), Medium (~500 tok), Long (~1000 tok), Unconstrained
+3. Query GPT-4.1 for each (question, budget) pair, extracting: answer, reasoning trace, token count, confidence
+4. Score accuracy using dataset-specific answer matching
+5. Compute accuracy curves, robustness gaps, and uncertainty correlations
+6. Statistical analysis with bootstrap CIs and appropriate tests
+
+### Baselines
+- NoCoT (zero reasoning): lower bound
+- Unconstrained CoT: upper bound / standard practice
+- Fixed budgets at each level: tests fixed vs adaptive
+
+### Evaluation Metrics
+- Accuracy (exact match / multiple choice)
+- Reasoning token count (actual)
+- Robustness gap: Accuracy_ID - Accuracy_OOD
+- Token efficiency: Accuracy / token_count
+- Confidence calibration: ECE of model-expressed confidence
+
+### Statistical Analysis Plan
+- Bootstrap confidence intervals (N=1000) for all accuracy estimates
+- Spearman correlation for length-accuracy and length-robustness relationships
+- Paired t-tests (or Wilcoxon) for pairwise condition comparisons
+- α = 0.05 with Bonferroni correction for multiple comparisons
+
+## Expected Outcomes
+- Inverted U-curve for accuracy confirmed on ID tasks (replicating prior work)
+- OOD curve shifted left (shorter optimal length OOD) or flattened
+- Robustness gap minimized at moderate trace lengths
+- Unconstrained traces show larger robustness gaps than moderate-length traces
+
+## Timeline
+- Phase 0-1 (Planning): 20 min ✓
+- Phase 2 (Setup + Implementation): 45 min
+- Phase 3-4 (Experiments): 90 min
+- Phase 5 (Analysis): 30 min
+- Phase 6 (Documentation): 20 min
+
+## Potential Challenges
+- API rate limits → use async with backoff
+- Budget forcing imprecision → measure actual token counts, analyze by actual length bins
+- Small sample sizes → bootstrap CIs, acknowledge power limitations
+- Answer extraction difficulty → use structured output format
+
+## Success Criteria
+- Clear evidence for or against non-monotonic robustness gap
+- Statistical significance on at least the primary comparison (moderate vs extreme lengths)
+- Actionable insight about when longer reasoning helps vs hurts OOD
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          LITERATURE REVIEW
+════════════════════════════════════════════════════════════════════════════════
+
+# Literature Review: Reasoning Trace Length as a Proxy for Robustness
+
+## Research Area Overview
+
+The relationship between reasoning trace length and model performance in LLMs has become a major research focus since the emergence of Large Reasoning Models (LRMs) like OpenAI&#39;s o1 and DeepSeek-R1. While chain-of-thought (CoT) prompting improves performance on reasoning tasks, recent work reveals that the relationship between trace length and quality is **non-monotonic**: both overly short and overly verbose traces can harm performance. This literature review synthesizes 28 papers spanning efficient reasoning, trace structure analysis, adaptive length control, and robustness.
+
+---
+
+## Key Papers
+
+### 1. When More is Less: Understanding Chain-of-Thought Length in LLMs
+- **Authors:** Wu et al. (Peking U., MIT, U. Chicago, TUM)
+- **Year:** 2025 | **arXiv:** 2502.07266
+- **Key Contribution:** Establishes the **inverted U-shaped curve** between CoT length and accuracy. Proves theoretically (via Lambert W function) that an optimal CoT length N* exists, beyond which error accumulation dominates benefits of decomposition.
+- **Methodology:** Real-world LLM evaluation (Qwen2.5 1.5B-72B on MATH/MMLU), controlled synthetic experiments (GPT-2 on arithmetic), formal probabilistic model of CoT accuracy A(N).
+- **Datasets:** MATH Level 5, MMLU STEM, GPQA, LeetCode-2K, synthetic arithmetic
+- **Key Results:**
+  - Optimal CoT length increases with task difficulty (r=0.57, p&lt;1e-8)
+  - Optimal length *decreases* with model capability (&#34;simplicity bias&#34;): 14 steps (1.5B) → 4 steps (72B)
+  - Gap between optimal and longest-length accuracy reaches 40% for 72B model
+  - RL training naturally converges to optimal length (proved via Lyapunov stability)
+- **Proposed:** Length-Filtered Vote — groups CoTs by length, selects lowest-entropy groups for majority vote
+- **Code:** Not released
+- **Relevance:** **CRITICAL** — Central evidence for our hypothesis about non-monotonic trace length effects
+
+### 2. Between Underthinking and Overthinking
+- **Authors:** Su et al. (Cornell, Adobe, MBZUAI)
+- **Year:** 2025 | **arXiv:** 2505.00127
+- **Key Contribution:** Defines and empirically characterizes two failure modes: **underthinking** (insufficient reasoning on hard problems) and **overthinking** (excessive reasoning on easy problems).
+- **Methodology:** Sample-level analysis (10 diverse responses per question), cross-model difficulty calibration, SimPO length optimization
+- **Datasets:** GSM8K, MATH
+- **Key Results:**
+  - Incorrect responses are dramatically longer (~6000 tokens) than correct ones (~2500 tokens)
+  - Non-monotonic length-accuracy curve at sample level; peak accuracy at low length ranks
+  - Models calibrate length for easy problems but fail for hard ones (asymmetric difficulty calibration)
+  - SimPO reduces length 30-60% with acceptable accuracy
+- **Code:** Not released
+- **Relevance:** **HIGH** — Demonstrates that trace length is informative but unreliable, especially at distribution boundaries
+
+### 3. The Illusion of Thinking (Rethinking)
+- **Authors:** Dellibarda Varela et al. (CSIC-UPM)
+- **Year:** 2025 | **arXiv:** 2507.01231
+- **Key Contribution:** Shows that token usage reflects model&#39;s *self-assessed tractability* rather than actual reasoning quality. When models &#34;give up,&#34; token usage drops sharply.
+- **Methodology:** Stepwise resolution and agentic dialogue on Towers of Hanoi and River Crossing puzzles
+- **Datasets:** Custom puzzle instances (Towers of Hanoi N=3-10, River Crossing N=2-100)
+- **Key Results:**
+  - Agentic dialogue shows contrasting pattern: agents never reduce token usage even when failing (looping behavior)
+  - River crossing failures in original study were artifacts of testing unsolvable configurations
+  - Per-substage token rate more stable than total count
+- **Code:** https://github.com/11inaki11/Rethinking-The-Illusion-of-Thinking
+- **Relevance:** **HIGH** — Challenges simple &#34;length = effort&#34; interpretation; token usage as uncertainty signal
+
+### 4. What Makes a Good Reasoning Chain?
+- **Authors:** Jiang et al. (USTC, CityU HK, Kuaishou)
+- **Year:** 2025 | **arXiv:** 2505.22148
+- **Key Contribution:** Shows that **structural patterns** (branching, backtracking, verification) in reasoning trees predict correctness better than length alone (+5.63% avg). Introduces LCoT2Tree pipeline.
+- **Methodology:** Convert sequential LCoT to hierarchical trees via 5-stage pipeline, classify with GATv2, explain with GNNExplainer
+- **Datasets:** MATH Level 5, GPQA, LiveCodeBench, MMLU-Pro (2000 responses each)
+- **Key Results:**
+  - Four error patterns: Over-Branching (57% in MATH), Step Redundancy (37% in LiveCodeBench), Direct Reasoning, Skipped Thinking (40% in GPQA)
+  - Tree-based Best-of-N voting: 82.47% on MATH vs 80.41% standard voting
+  - Length-based prediction achieves only 58-75% accuracy depending on task
+- **Code:** Not released
+- **Relevance:** **HIGH** — Argues structure, not length, is the better signal; provides methodology we could extend
+
+### 5. L1: Controlling How Long A Reasoning Model Thinks
+- **Authors:** Aggarwal &amp; Welleck (CMU). Published at COLM 2025.
+- **Year:** 2025 | **arXiv:** 2503.04697
+- **Key Contribution:** RL-based Length Controlled Policy Optimization (LCPO) that precisely controls reasoning length via user-specified token budget.
+- **Methodology:** GRPO with length penalty/constraint reward terms; LCPO-Exact and LCPO-Max variants
+- **Datasets:** DeepScaleR-Preview-Dataset (40K math QA), eval on AIME 2025, MATH, AMC, Olympiad-Bench, GPQA, LSAT, MMLU
+- **Key Results:**
+  - Performance scales log-linearly with reasoning length
+  - L1 outperforms S1 (budget forcing) by 100-150% relative at 512-1024 token budgets
+  - **OOD generalization:** Robust on GPQA, LSAT despite math-only training; MMLU weaker (R²=0.66)
+  - Mean length deviation from target only ~3%; budget violation rate 1.3%
+  - 1.5B model surpasses GPT-4o at comparable short-CoT lengths
+- **Code:** https://cmu-l3.github.io/l1
+- **Relevance:** **CRITICAL** — Demonstrates controllable length with OOD generalization; key baseline for adaptive approaches
+
+### 6. Is Long-to-Short a Free Lunch?
+- **Authors:** Yang et al. (KAUST, U. Georgia, U. Macau)
+- **Year:** 2025 | **arXiv:** 2506.19492
+- **Key Contribution:** Reveals hidden costs of efficient reasoning: training-free methods that compress/skip reasoning substantially degrade **behavioral consistency**, increase sycophancy, and enable models to conceal decision-making.
+- **Methodology:** ICBENCH benchmark measuring 3 inconsistency types: ITS, TR-LB, IR-SE; evaluated on NoThinking and Simple Token-Budget strategies
+- **Datasets:** AIME2024/2025, OlympiadBench, AdvBench, WDCT
+- **Key Results:**
+  - NoThinking nearly doubles TR-LB inconsistency scores
+  - Token-budget reduces &#34;thinking ratio&#34; from 0.78 to 0.33, increases &#34;withholding&#34;
+  - Post-hoc rationalization scores exceed 0.55 for all models
+  - Larger models show better consistency overall but NOT for ethical/opinion tasks
+- **Code:** Not released
+- **Relevance:** **CRITICAL** — Shows accuracy-preserving length reduction can still harm robustness (faithfulness, consistency)
+
+### 7. SEAL: Steerable Reasoning Calibration
+- **Authors:** Chen et al. (UT Austin, Intel). Published at COLM 2025.
+- **Year:** 2025 | **arXiv:** 2504.07986
+- **Key Contribution:** Categorizes CoT into execution, reflection, and transition thoughts; excessive reflection/transition correlate with failure. Training-free steering vector approach.
+- **Datasets:** Math500, GSM8K, LiveCodeBench
+- **Key Results:** Up to 11% accuracy improvement while reducing tokens by 11.8-50.4%
+- **Code:** https://github.com/VITA-Group/SEAL
+- **Relevance:** **HIGH** — Shows trace composition (not just length) matters; practical steering tool
+
+### 8. Beyond Semantics: The Unreasonable Effectiveness of Reasonless Tokens
+- **Authors:** Valmeekam et al. (Arizona State)
+- **Year:** 2025 | **arXiv:** 2505.13775
+- **Key Contribution:** Models trained on **corrupted** (semantically meaningless) reasoning traces achieve comparable performance and **better OOD generalization** than those trained on correct traces. Trace length is agnostic to computational complexity.
+- **Datasets:** Formally verifiable reasoning tasks (controlled transformer training)
+- **Relevance:** **HIGH** — Fundamental challenge to assumption that trace content/length reflects genuine reasoning
+
+### 9. Thought Anchors: Which LLM Reasoning Steps Matter?
+- **Authors:** Bogdan et al. (MATS). Under review at ICLR 2026.
+- **Year:** 2025 | **arXiv:** 2506.19143
+- **Key Contribution:** Black-box method measuring counterfactual importance of each sentence in reasoning traces. Discovers &#34;thought anchors&#34; with outsized impact on final answers.
+- **Code:** https://thought-anchors.com
+- **Relevance:** **HIGH** — Not all steps contribute equally; key to understanding what makes trace length informative
+
+### 10. Reasoning as Compression: Unifying Budget Forcing via the Conditional Information Bottleneck
+- **Authors:** Massoli et al. (Qualcomm AI Research)
+- **Year:** 2026 | **arXiv:** 2603.08462
+- **Key Contribution:** Recasts efficient reasoning as lossy compression under Information Bottleneck principle. CIB objective with semantic prior measuring token cost by surprisal.
+- **Relevance:** **HIGH** — Theoretical framework for understanding when reasoning tokens are informative vs redundant
+
+### 11. Stop Overthinking: A Survey on Efficient Reasoning for LLMs
+- **Authors:** Sui et al. (Rice U., U. Houston)
+- **Year:** 2025 | **arXiv:** 2503.16419
+- **Key Contribution:** First structured survey categorizing efficient reasoning approaches into model-based, reasoning output-based, and input prompts-based methods.
+- **Code:** https://github.com/Eclipsess/Awesome-Efficient-Reasoning-LLMs
+- **Relevance:** **HIGH** — Comprehensive survey; essential background reference
+
+### 12. Don&#39;t Overthink It: A Survey of Efficient R1-style LRMs
+- **Authors:** Yue et al. (Southeast U., Alibaba)
+- **Year:** 2025 | **arXiv:** 2508.02120
+- **Key Contribution:** Survey focused on R1-style models covering early exit, CoT compression, adaptive reasoning, representation engineering.
+- **Code:** https://github.com/yuelinan/Awesome-Efficient-R1-style-LRMs
+- **Relevance:** **HIGH** — Complementary survey with focus on R1-style models
+
+### 13-15. Additional Key Papers (Skimmed)
+
+| Paper | arXiv | Key Finding | Relevance |
+|-------|-------|-------------|-----------|
+| Do LLMs Overthink Math? (2507.04023) | Introduces &#34;Overthinking Score&#34;; accuracy-verbosity non-monotonic; constrained budgets cause ~28% accuracy collapse | HIGH |
+| Concise Reasoning, Big Gains (2505.19716) | Difficulty-aware pruning; 100K pruned CoT &gt; 800K original long CoT; avg 720 tokens | HIGH |
+| Output Length Effect on DeepSeek-R1 Safety (2503.01923) | Longer outputs improve safety via self-correction but certain attacks exploit extended generation | HIGH |
+| Early Stopping Chain-of-Thoughts (2509.14004) | ES-CoT detects answer convergence; reduces tokens ~41% while maintaining accuracy | HIGH |
+| Think When You Need (2504.03234) | Pairwise reward to reason only when needed; extends to fuzzy tasks | HIGH |
+| Can LLMs Detect Errors in Long CoT (2502.19361) | DeltaBench for error detection in long reasoning chains | MEDIUM |
+| Constraint-Rectified Training (2602.12526) | CRT: constrained optimization alternating length minimization and accuracy rectification | HIGH |
+| MuSR (2310.16049) | Multistep soft reasoning benchmark; challenging for GPT-4 | MEDIUM (useful eval dataset) |
+
+---
+
+## Common Methodologies
+
+1. **RL-based length control:** GRPO/PPO with length penalty rewards (L1, TWYN, CRT)
+2. **Training-free steering:** Activation/representation engineering (SEAL), budget forcing (S1)
+3. **Length-conditioned SFT:** Training on curated short CoT data (LiteCoT, Concise Reasoning)
+4. **Structural analysis:** Converting sequential traces to trees/graphs (Good Reasoning Chain, Thought Anchors)
+5. **Early stopping:** Convergence detection during generation (ES-CoT, ESTAR)
+6. **Sampling-based:** Length-filtered voting, best-of-N with structural scoring
+
+## Standard Baselines
+
+- **Unconstrained generation:** Standard CoT with no length control
+- **Budget forcing (S1):** Simple token budget via system prompt
+- **Majority voting / Self-consistency:** Multiple samples with majority vote
+- **NoThinking:** Skip thinking stage entirely (dummy think tags)
+
+## Evaluation Metrics
+
+| Metric | Used In | Description |
+|--------|---------|-------------|
+| Task accuracy | All papers | Correctness of final answer |
+| Token count / reasoning length | All papers | Number of tokens or reasoning steps |
+| Overthinking Score | Overthink Math | Harmonic mean of accuracy and token-efficiency |
+| Length deviation | L1 | |target_length - actual_length| / target |
+| Normalized Inconsistency Score | Long-to-Short | Behavioral consistency controlling for sampling variability |
+| Tree-based correctness prediction | Good Reasoning Chain | GNN classification accuracy on reasoning trees |
+| Pearson correlation | When More is Less | Difficulty vs optimal length correlation |
+
+## Datasets in the Literature
+
+| Dataset | Used In | Task | Size |
+|---------|---------|------|------|
+| MATH (Hendrycks) | Most papers | Competition math | 12.5K |
+| GSM8K | Multiple | Grade school math | 8.8K |
+| GPQA | L1, Good Chain, Long-to-Short | Graduate-level Q&amp;A | ~450 |
+| MMLU / MMLU-Pro | Multiple | Multi-task understanding | 12K+ |
+| AIME 2024/2025 | L1, Long-to-Short | Math competition | ~30 per year |
+| LiveCodeBench | SEAL, Good Chain | Code reasoning | Varies |
+| MuSR | Standalone | Multistep soft reasoning | 756 |
+
+## Gaps and Opportunities
+
+1. **No direct study of trace length as OOD robustness proxy:** Papers study length vs accuracy or length vs consistency, but none systematically measure OOD robustness as a function of trace length.
+
+2. **RL-trained vs training-free length control:** L1 shows RL-trained control generalizes OOD; Long-to-Short shows training-free methods degrade consistency. Whether RL-trained models maintain behavioral faithfulness is unstudied.
+
+3. **Uncertainty-informed adaptive length:** Papers mention uncertainty (Beyond Semantics shows corrupted traces generalize better OOD; Illusion of Thinking shows token usage as uncertainty signal) but no paper uses uncertainty to dynamically select trace length.
+
+4. **Cross-domain generalization:** Most experiments focus on math reasoning. Effects of trace length on robustness in NLP tasks (text classification, NLI, QA) and multimodal settings are unexplored.
+
+5. **Structural vs length signals for robustness:** Good Reasoning Chain and Thought Anchors show structure matters more than length for correctness prediction. Whether this extends to robustness/generalization is unknown.
+
+---
+
+## Recommendations for Our Experiment
+
+### Recommended Datasets
+1. **MATH** (primary) — Well-studied, multiple difficulty levels, enables controlled length analysis
+2. **GSM8K** — Easier baseline for contrast with MATH
+3. **GPQA** — OOD evaluation for math-trained models
+4. **MMLU-Pro** — Knowledge-heavy OOD evaluation
+5. **MuSR** — Multistep reasoning OOD evaluation
+
+### Recommended Baselines
+1. **Unconstrained generation** — Standard full CoT
+2. **Budget forcing (S1-style)** — Simple token budget via prompting
+3. **L1 (LCPO)** — RL-trained length control (code available)
+4. **SEAL** — Training-free steering (code available)
+5. **NoThinking** — Skip reasoning entirely (lower bound)
+
+### Recommended Metrics
+1. **In-distribution accuracy** at various trace lengths
+2. **OOD accuracy** on held-out datasets at various trace lengths
+3. **Accuracy drop** (ID→OOD) as function of trace length (robustness proxy)
+4. **Token efficiency** — accuracy per token
+5. **Consistency metrics** (from ICBENCH) if feasible
+6. **Trace structure features** (branching, backtracking counts) as covariates
+
+### Methodological Considerations
+- Use multiple difficulty levels within datasets to test difficulty-dependent optimal length
+- Compare RL-trained (L1) vs training-free (SEAL, budget forcing) length control
+- Test both open-source reasoning models (DeepSeek-R1-Distill, Qwen2.5) and API models
+- Measure uncertainty (entropy, perplexity) as potential adaptive signal
+- The inverted U-shape is well-established for accuracy; test whether it holds for robustness metrics
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          PAPER REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+Generate a complete academic paper with the following structure:
+
+1. TITLE
+   - Clear, specific, informative
+   - Should convey main finding or contribution
+
+2. AUTHOR
+   - Use this exact author line in the \author{} block: NeuriCo
+
+3. ABSTRACT (150-250 words)
+   - Problem statement
+   - Approach
+   - Key results
+   - Significance
+
+4. INTRODUCTION
+   - Research problem and motivation
+   - Gap in existing work
+   - Our contribution (be specific)
+   - Paper organization
+
+5. RELATED WORK
+   - Organized by theme/approach
+   - Position our work relative to prior work
+   - Cite papers from literature review
+
+6. METHODOLOGY
+   - Clear description of approach
+   - Experimental setup
+   - Datasets used
+   - Evaluation metrics
+   - Baselines
+
+7. RESULTS
+   - Present results with tables and figures
+   - Statistical analysis
+   - Comparison to baselines
+   - Ablation studies (if applicable)
+
+8. DISCUSSION
+   - Interpretation of results
+   - Limitations
+   - Broader implications
+
+9. CONCLUSION
+   - Summary of contributions
+   - Key findings
+   - Future work
+
+10. REFERENCES
+   - BibTeX format
+   - All cited papers
+
+════════════════════════════════════════════════════════════════════════════════
+                          OUTPUT FORMAT
+════════════════════════════════════════════════════════════════════════════════
+
+Create a MODULAR LaTeX project with the following directory structure:
+
+paper_draft/
+├── main.tex              # Main file that imports all sections
+├── references.bib        # BibTeX references
+├── sections/
+│   ├── abstract.tex      # Abstract content
+│   ├── introduction.tex  # Introduction section
+│   ├── related_work.tex  # Related work section
+│   ├── methodology.tex   # Methodology section
+│   ├── results.tex       # Results section
+│   ├── discussion.tex    # Discussion section
+│   └── conclusion.tex    # Conclusion section
+├── figures/              # Directory for any generated figures
+├── tables/               # Directory for complex standalone tables
+└── appendix/             # Directory for appendix sections (if needed)
+
+INSTRUCTIONS:
+1. First, create the directory structure above (mkdir -p paper_draft/sections paper_draft/figures paper_draft/tables paper_draft/appendix)
+2. Write main.tex using the EXACT preamble for NEURIPS:
+
+   \documentclass{article}
+   \usepackage[final]{neurips_2025}  % NEURIPS style (neurips_2025.sty is in paper_draft/)
+   \usepackage[hidelinks]{hyperref}  % REQUIRED: clickable links
+   \usepackage{booktabs}  % REQUIRED: professional tables
+   \usepackage{graphicx}
+   \usepackage{amsmath,amssymb}
+
+   % Import command files
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+   % Use this bibliography style:
+   \bibliographystyle{plainnat}
+
+   \author{NeuriCo}
+
+   - Use \input{sections/...} to include each section
+   - Use \bibliography{references} for references
+3. Write each section file with COMPLETE content (no placeholders)
+4. Each section file should include its \section{} command
+5. Write references.bib with all citations in BibTeX format
+6. After writing all files, compile the paper:
+   cd paper_draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+
+This modular structure allows humans to easily:
+- Edit individual sections without navigating a large file
+- Track changes per section
+- Reuse sections across different paper versions
+
+════════════════════════════════════════════════════════════════════════════════
+                          QUALITY REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+- Academic tone throughout
+- All claims must be supported by data from the experiment report
+- Proper citations using \cite{} commands
+- Clear figures and tables with proper captions
+- NO placeholder text - every section must have real content
+- The paper MUST compile without errors
+- If compilation fails, debug and fix the LaTeX errors
+
+════════════════════════════════════════════════════════════════════════════════
+                          LAB WRITING STYLE
+════════════════════════════════════════════════════════════════════════════════
+
+Follow these lab-specific conventions to match our paper style:
+
+1. LANGUAGE STYLE:
+   - Use active voice: "We propose", "We examine", "We focus on"
+   - Be direct and confident: "Our main question is...", "We hypothesize that..."
+   - State things clearly and simply - prefer plain language over jargon
+   - Use bold questions as paragraph organizers: {\bf what is X?}
+   - Include specific quantitative claims: "8.97% over baseline"
+   - Avoid fancy wording: "utilize" → "use", "facilitate" → "help"
+
+2. INTRODUCTION STRUCTURE:
+   - Engaging hook (get to the point quickly)
+   - Problem importance
+   - Gap identification
+   - Your approach with method figure reference
+   - Quantitative preview of results
+   - Contribution bullets (3-4 items, action verbs)
+
+3. CONTRIBUTION LISTS:
+   \begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+       \item We propose...
+       \item We conduct...
+       \item We complement...
+   \end{itemize}
+
+4. MODULAR COMMANDS STRUCTURE:
+   Command templates are pre-copied to paper_draft/commands/:
+   - math.tex: Math notation macros
+   - general.tex: Formatting macros
+   - macros.tex: Project-specific term definitions (customize this for your paper)
+
+   In main.tex, include:
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+5. REFERENCE CONVENTIONS:
+   Use reference macros from math.tex:
+   - \figref{fig:name} for "figure 1" (lowercase, in-sentence)
+   - \Figref{fig:name} for "Figure 1" (capitalized, start of sentence)
+   - \secref{sec:name} for "section 2"
+
+6. TEXT FORMATTING:
+   - Use \para{Header text} for bold paragraph headers
+   - Define method/dataset names with \textsc and \xspace:
+     \newcommand{\methodname}{\textsc{MethodName}\xspace}
+
+7. TABLE FORMATTING:
+   - Use booktabs package (no vertical lines)
+   - Use \resizebox{\textwidth}{!}{...} for wide tables
+   - Use @{} to remove padding at table edges
+   - Use \cmidrule(lr){x-y} for sub-headers
+   - Use \textsc{} for dataset/method names in headers
+   - Bold best results with {\bf ...}
+
+8. FIGURE FORMATTING:
+   - Use 0.32\textwidth for 3-column subfigures
+   - Use 0.95\linewidth for full-width figures
+   - Use \input{figures/legend} for shared legends
+   - Write self-contained captions explaining key observations
+
+9. RESULTS PRESENTATION:
+   - Define \increase and \decrease for colored arrows (green up, red down)
+   - Bold best results in tables
+   - Report confidence intervals when available
+
+10. ALGORITHM STYLING:
+    - Use algpseudocode with [noend]
+    - Use \triangleright for comments
+
+11. HYPERLINKS (REQUIRED):
+    - Always use \usepackage[hidelinks]{hyperref} or with colored links
+    - All citations, section refs, figure refs, table refs must be clickable
+    - This is essential for reader navigation
+
+════════════════════════════════════════════════════════════════════════════════
+                          WORKFLOW: REVIEW AND REFLECT
+════════════════════════════════════════════════════════════════════════════════
+
+Before calling finish, you MUST complete these review steps:
+
+1. REVIEW RESOURCES (at the start):
+   - Read .claude/skills/paper-writer/SKILL.md for detailed guidance
+   - Study templates/paper_writing/lab_style_guide.md for style conventions
+   - Browse paper_examples/ for formatting and language patterns
+
+2. SELF-REFLECTION (before finishing):
+   After writing all sections, review your work against these criteria:
+
+   LANGUAGE CHECK:
+   - [ ] Is the writing clear and jargon-free?
+   - [ ] Are claims specific with quantitative support?
+   - [ ] Is active voice used throughout?
+
+   FORMATTING CHECK:
+   - [ ] Does main.tex include \input{commands/math}, \input{commands/general}, \input{commands/macros}?
+   - [ ] Is hyperref package included for clickable references?
+   - [ ] Do tables use booktabs (no vertical lines)?
+   - [ ] Are best results bolded in tables?
+   - [ ] Are figures/tables properly captioned?
+
+   STRUCTURE CHECK:
+   - [ ] Does introduction follow: hook → importance → gap → approach → preview → contributions?
+   - [ ] Are contribution bullets specific with action verbs?
+   - [ ] Does the paper compile without errors?
+
+3. FIX ISSUES:
+   - Address any issues found in the self-reflection
+   - Re-compile and verify the PDF looks correct
+
+Only after completing this review should you consider the paper finished.

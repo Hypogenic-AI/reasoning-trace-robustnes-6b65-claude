@@ -1,0 +1,14 @@
+PDF: papers/when_more_is_less_2502_07266.pdf
+Total pages: 27
+Pages per chunk: 3
+
+Chunks:
+  when_more_is_less_2502_07266_chunk_001.pdf: pages 1-3
+  when_more_is_less_2502_07266_chunk_002.pdf: pages 4-6
+  when_more_is_less_2502_07266_chunk_003.pdf: pages 7-9
+  when_more_is_less_2502_07266_chunk_004.pdf: pages 10-12
+  when_more_is_less_2502_07266_chunk_005.pdf: pages 13-15
+  when_more_is_less_2502_07266_chunk_006.pdf: pages 16-18
+  when_more_is_less_2502_07266_chunk_007.pdf: pages 19-21
+  when_more_is_less_2502_07266_chunk_008.pdf: pages 22-24
+  when_more_is_less_2502_07266_chunk_009.pdf: pages 25-27

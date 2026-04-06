@@ -1,0 +1,78 @@
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:method:overview}
+
+We study the relationship between reasoning trace length and accuracy across four benchmarks by controlling token budgets via system-prompt instructions. Our experimental design has three components: (1) budget-forcing at five levels to vary reasoning length, (2) evaluation on benchmarks spanning different domains and difficulties, and (3) an adaptive two-pass strategy that uses model confidence to select reasoning depth. We use GPT-4.1 as our target model, as it represents a state-of-the-art general-purpose LLM (released April 2025) with strong reasoning capabilities.
+
+\subsection{Budget-Forcing Protocol}
+\label{sec:method:budget}
+
+We control reasoning trace length through system-prompt instructions paired with maximum token limits, following the budget-forcing approach of \citet{aggarwal2025l1}. We define five conditions spanning the full spectrum from zero reasoning to unconstrained generation:
+
+\begin{table}[t]
+\centering
+\caption{Budget-forcing conditions. Each condition combines a system prompt instruction with a maximum completion token limit. \textsc{No-CoT} suppresses reasoning entirely; \textsc{Unconstrained} provides generous headroom for extended traces.}
+\label{tab:budgets}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Condition} & \textbf{System Prompt Instruction} & \textbf{Max Tokens} \\
+\midrule
+\nocot & ``Answer directly with NO reasoning or explanation'' & 150 \\
+\shortbudget & ``Think briefly in 1--2 sentences'' & 300 \\
+\medbudget & ``Think step by step in moderate detail (3--5 steps)'' & 800 \\
+\longbudget & ``Think very carefully and thoroughly step by step'' & 1500 \\
+\unconst & ``Think step by step, taking as much space as you need'' & 3000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All queries use temperature $T{=}0.0$ for deterministic outputs and a fixed random seed of 42 for reproducibility. We record the full response text, extracted answer, actual completion token count, and model-expressed confidence (extracted via a follow-up prompt) for each query.
+
+\subsection{Adaptive Two-Pass Strategy}
+\label{sec:method:adaptive}
+
+We evaluate a simple confidence-based adaptive strategy: (1) query with the \shortbudget budget; (2) extract the model's self-reported confidence; (3) if confidence $< 75\%$, re-query with the \longbudget budget and use that answer instead. The threshold of 75\% was chosen to represent moderate uncertainty. This tests whether model confidence can serve as a practical signal for allocating additional reasoning effort.
+
+\subsection{Benchmarks}
+\label{sec:method:data}
+
+We evaluate on four benchmarks chosen to span a range of domains, difficulty levels, and reasoning types:
+
+\begin{table}[t]
+\centering
+\caption{Benchmark characteristics. We sample 80 questions per dataset (78 for \musr due to balancing across subtasks). Each benchmark serves a distinct role in our experimental design.}
+\label{tab:datasets}
+\begin{tabular}{@{}llcll@{}}
+\toprule
+\textbf{Dataset} & \textbf{Task Type} & \textbf{$n$} & \textbf{Role} & \textbf{Answer Format} \\
+\midrule
+\math & Competition math & 80 & In-distribution & Open-ended (\texttt{\textbackslash boxed\{\}}) \\
+\gsmk & Grade school math & 80 & Easy OOD & Numeric \\
+\mmlupro & Multi-domain knowledge & 80 & Knowledge OOD & Multiple choice (A--J) \\
+\musr & Multi-step soft reasoning & 78 & Hard OOD & Multiple choice \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\para{MATH}~\citep{hendrycks2021math} contains competition mathematics problems across five difficulty levels. We use stratified sampling (16 problems per level) to ensure coverage of the difficulty spectrum. This serves as our primary \id benchmark because GPT-4.1 is extensively trained on mathematical reasoning.
+
+\para{GSM8K}~\citep{cobbe2021gsm8k} contains grade-school arithmetic word problems. As an ``easy OOD'' benchmark, it tests whether reasoning length matters when tasks are well within the model's capability.
+
+\para{MMLU-Pro}~\citep{wang2023mmlupro} extends the original MMLU with harder, 10-option multiple choice questions spanning science, law, engineering, and other domains. It serves as a knowledge-heavy OOD benchmark requiring domain expertise rather than pure reasoning.
+
+\para{MuSR}~\citep{sprague2023musr} presents long narrative passages (500--1000 words) requiring multi-step deductive reasoning across murder mysteries, object placements, and team allocation scenarios. We balance our sample across all three subtasks. This represents our hardest OOD benchmark, testing reasoning under significant distribution shift.
+
+\subsection{Evaluation Metrics}
+\label{sec:method:metrics}
+
+\para{Accuracy.} We use exact-match accuracy with task-specific normalization: LaTeX expression matching for \math, numeric comparison (within tolerance) for \gsmk, and letter matching for \mmlupro and \musr.
+
+\para{Robustness gap.} We define the \robgap as $\Delta_{\text{rob}} = \text{Acc}_{\text{MATH}} - \text{Acc}_{\text{OOD}}$ for each OOD benchmark at each budget level. A smaller gap indicates more consistent performance across domains.
+
+\para{Token efficiency.} We compute efficiency as $\eta = \text{Acc} / \bar{t} \times 100$, where $\bar{t}$ is the mean completion token count, capturing accuracy per unit of computational effort.
+
+\para{Confidence calibration.} We measure the Spearman rank correlation ($\rho$) between model-expressed confidence and binary correctness, separately for each dataset. High $\rho$ indicates the model can reliably distinguish questions it will answer correctly from those it will not.
+
+\para{Statistical analysis.} All accuracy estimates are accompanied by 95\% bootstrap confidence intervals computed from 1,000 resamples. We use Spearman correlations for monotonicity tests and paired comparisons between budget conditions. We report $p$-values without multiple-comparison correction where individual tests are of independent interest, and note significance at $\alpha = 0.05$.

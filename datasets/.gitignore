@@ -1,0 +1,10 @@
+# Exclude dataset data files (large binary/arrow files)
+competition_math/
+gsm8k/
+gpqa/
+mmlu_pro/
+musr/
+
+# Include documentation and samples
+!README.md
+!.gitignore

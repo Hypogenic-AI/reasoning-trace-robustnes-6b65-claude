@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "stages": {
+    "resource_finder": {
+      "success": true,
+      "completion_marker": "/workspaces/reasoning-trace-robustnes-6b65-claude/.resource_finder_complete",
+      "outputs": {
+        "literature_review": "/workspaces/reasoning-trace-robustnes-6b65-claude/literature_review.md",
+        "resources_catalog": "/workspaces/reasoning-trace-robustnes-6b65-claude/resources.md",
+        "papers_dir": "/workspaces/reasoning-trace-robustnes-6b65-claude/papers",
+        "datasets_dir": "/workspaces/reasoning-trace-robustnes-6b65-claude/datasets",
+        "code_dir": "/workspaces/reasoning-trace-robustnes-6b65-claude/code"
+      },
+      "log_file": "/workspaces/reasoning-trace-robustnes-6b65-claude/logs/resource_finder_claude.log",
+      "transcript_file": "/workspaces/reasoning-trace-robustnes-6b65-claude/logs/resource_finder_claude_transcript.jsonl",
+      "elapsed_time": 1626.9280982017517
+    },
+    "experiment_runner": {
+      "success": true,
+      "return_code": 0,
+      "elapsed_time": 1096.0095422267914,
+      "log_file": "/workspaces/reasoning-trace-robustnes-6b65-claude/logs/execution_claude.log",
+      "transcript_file": "/workspaces/reasoning-trace-robustnes-6b65-claude/logs/execution_claude_transcript.jsonl"
+    }
+  },
+  "work_dir": "/workspaces/reasoning-trace-robustnes-6b65-claude"
+}

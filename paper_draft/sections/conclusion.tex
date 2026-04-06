@@ -1,0 +1,8 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We present a systematic investigation of reasoning trace length as a proxy for robustness across in-distribution and out-of-distribution benchmarks. Our experiments with GPT-4.1 across five budget conditions and four benchmarks reveal that the length--accuracy relationship is fundamentally task-dependent: monotonically increasing for tasks within the model's capability range, flat for easy tasks, and non-monotonic for tasks at the model's capability frontier. We identify the ``underthinking trap''---a regime where short CoT is worse than no CoT---and demonstrate that model confidence is catastrophically miscalibrated on hard OOD tasks, rendering confidence-based adaptive strategies unreliable precisely where they are most needed.
+
+The key takeaway for practitioners is that the ``more reasoning is better'' heuristic is insufficient. For in-distribution and moderate-difficulty tasks, longer reasoning generally helps with diminishing returns beyond ${\sim}$500 tokens. For tasks at the frontier of model capability, moderate-length reasoning outperforms both extremes, and adaptive strategies require external calibration signals rather than model self-reported confidence.
+
+Future work should extend this analysis across multiple model families, employ RL-trained length control~\citep{aggarwal2025l1} for more precise budget targeting, and develop external uncertainty signals---such as probe-based methods~\citep{bogdan2025anchors}, semantic entropy of sampled paths, or learned difficulty classifiers---that remain calibrated under distribution shift. Understanding the mechanistic basis of the underthinking trap and its interaction with model architecture is another promising direction.

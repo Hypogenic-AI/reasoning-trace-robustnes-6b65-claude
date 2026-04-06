@@ -1,0 +1,142 @@
+[
+  {
+    "arxiv_id": "2507.01231",
+    "filename": "illusion_of_thinking",
+    "title": "Rethinking the Illusion of Thinking"
+  },
+  {
+    "arxiv_id": "2503.16419",
+    "filename": "stop_overthinking_survey",
+    "title": "Stop Overthinking: A Survey on Efficient Reasoning for Large Language Models"
+  },
+  {
+    "arxiv_id": "2502.07266",
+    "filename": "when_more_is_less",
+    "title": "When More is Less: Understanding Chain-of-Thought Length in LLMs"
+  },
+  {
+    "arxiv_id": "2504.07986",
+    "filename": "seal_steerable_reasoning",
+    "title": "SEAL: Steerable Reasoning Calibration of Large Language Models for Free"
+  },
+  {
+    "arxiv_id": "2503.04697",
+    "filename": "l1_controlling_reasoning",
+    "title": "L1: Controlling How Long A Reasoning Model Thinks With Reinforcement Learning"
+  },
+  {
+    "arxiv_id": "2505.00127",
+    "filename": "underthinking_overthinking",
+    "title": "Between Underthinking and Overthinking: An Empirical Study of Reasoning Length and correctness in LLMs"
+  },
+  {
+    "arxiv_id": "2505.19716",
+    "filename": "concise_reasoning_big_gains",
+    "title": "Concise Reasoning, Big Gains: Pruning Long Reasoning Trace with Difficulty-Aware Prompting"
+  },
+  {
+    "arxiv_id": "2508.02120",
+    "filename": "dont_overthink_survey",
+    "title": "Don't Overthink It: A Survey of Efficient R1-style Large Reasoning Models"
+  },
+  {
+    "arxiv_id": "2505.13775",
+    "filename": "beyond_semantics",
+    "title": "Beyond Semantics: The Unreasonable Effectiveness of Reasonless Intermediate Tokens"
+  },
+  {
+    "arxiv_id": "2506.19143",
+    "filename": "thought_anchors",
+    "title": "Thought Anchors: Which LLM Reasoning Steps Matter?"
+  },
+  {
+    "arxiv_id": "2510.13797",
+    "filename": "reasoning_as_compression",
+    "title": "Breadcrumbs Reasoning: Memory-Efficient Reasoning with Compression Beacons"
+  },
+  {
+    "arxiv_id": "2505.22148",
+    "filename": "good_reasoning_chain",
+    "title": "What Makes a Good Reasoning Chain? Uncovering Structural Patterns in Long Chain-of-Thought Reasoning"
+  },
+  {
+    "arxiv_id": "2507.04023",
+    "filename": "overthink_math",
+    "title": "Do LLMs Overthink Basic Math Reasoning? Benchmarking the Accuracy-Efficiency Tradeoff in Language Models"
+  },
+  {
+    "arxiv_id": "2503.01923",
+    "filename": "output_length_deepseek",
+    "title": "Output Length Effect on DeepSeek-R1's Safety in Forced Thinking"
+  },
+  {
+    "arxiv_id": "2509.14004",
+    "filename": "early_stopping_cot",
+    "title": "Early Stopping Chain-of-thoughts in Large Language Models"
+  },
+  {
+    "arxiv_id": "2506.19492",
+    "filename": "long_to_short",
+    "title": "Is Long-to-Short a Free Lunch? Investigating Inconsistency and Reasoning Efficiency in LRMs"
+  },
+  {
+    "arxiv_id": "2504.03234",
+    "filename": "think_when_needed",
+    "title": "Think When You Need: Self-Adaptive Chain-of-Thought Learning"
+  },
+  {
+    "arxiv_id": "2008.12863",
+    "filename": "trimr",
+    "title": "TriCG and TriMR: Two Iterative Methods for Symmetric Quasi-Definite Systems"
+  },
+  {
+    "arxiv_id": "2602.12526",
+    "filename": "constraint_rectified",
+    "title": "Constraint-Rectified Training for Efficient Chain-of-Thought"
+  },
+  {
+    "arxiv_id": "2510.20867",
+    "filename": "incentivizing_reasoning",
+    "title": "Incentivizing Consistent, Effective and Scalable Reasoning Capability"
+  },
+  {
+    "arxiv_id": "2511.05747",
+    "filename": "cot_x",
+    "title": "CoT-X: An Adaptive Framework for Cross-Model Chain-of-Thought"
+  },
+  {
+    "arxiv_id": "2505.23059",
+    "filename": "token_to_action",
+    "title": "From Token to Action: State Machine Reasoning to Mitigate Overthinking"
+  },
+  {
+    "arxiv_id": "2509.21933",
+    "filename": "cot_fails_clinical",
+    "title": "Why Chain of Thought Fails in Clinical Text Understanding"
+  },
+  {
+    "arxiv_id": "2503.21614",
+    "filename": "survey_efficient_reasoning",
+    "title": "A Survey of Efficient Reasoning for Large Reasoning Models"
+  },
+  {
+    "arxiv_id": "2310.16049",
+    "filename": "musr",
+    "title": "MuSR: Testing the Limits of Chain-of-thought with Multistep Soft Reasoning"
+  },
+  {
+    "arxiv_id": "2502.19361",
+    "filename": "detect_errors_cot",
+    "title": "Can Large Language Models Detect Errors in Long Chain-of-Thought"
+  },
+  {
+    "arxiv_id": "2603.08462",
+    "filename": "reasoning_as_compression",
+    "title": "Reasoning as Compression: Unifying Budget Forcing"
+  },
+  {
+    "arxiv_id": "2405.11431",
+    "filename": "ood_robustness_llm",
+    "title": "On the Out-of-Distribution Generalization of LLMs"
+  }
+]
